@@ -1,0 +1,38 @@
+{
+  "name": "cloud-abstraction-layer-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Google Cloud and Azure with unified cloud abstraction",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "google-cloud",
+    "azure",
+    "gcloud",
+    "azure-cli"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0",
+    "@azure/storage-blob": "^12.26.0",
+    "@azure/identity": "^4.3.0",
+    "@google-cloud/storage": "^7.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+}
+
