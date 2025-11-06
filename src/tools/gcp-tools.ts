@@ -112,6 +112,145 @@ export class GcpTools {
           required: ['bucketName', 'objectName'],
         },
       },
+      {
+        name: 'gcp_list_gce_instances',
+        description: 'List Google Compute Engine instances',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            projectId: {
+              type: 'string',
+              description: 'Optional GCP project ID',
+            },
+            zone: {
+              type: 'string',
+              description: 'Zone filter (optional)',
+            },
+            status: {
+              type: 'string',
+              description: 'Status filter: RUNNING, STOPPED, etc. (optional)',
+            },
+          },
+        },
+      },
+      {
+        name: 'gcp_start_gce_instance',
+        description: 'Start a GCE instance',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            instance: {
+              type: 'string',
+              description: 'Instance name',
+            },
+            zone: {
+              type: 'string',
+              description: 'Zone where the instance is located',
+            },
+            projectId: {
+              type: 'string',
+              description: 'Optional GCP project ID',
+            },
+          },
+          required: ['instance', 'zone'],
+        },
+      },
+      {
+        name: 'gcp_stop_gce_instance',
+        description: 'Stop a GCE instance',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            instance: {
+              type: 'string',
+              description: 'Instance name',
+            },
+            zone: {
+              type: 'string',
+              description: 'Zone where the instance is located',
+            },
+            projectId: {
+              type: 'string',
+              description: 'Optional GCP project ID',
+            },
+          },
+          required: ['instance', 'zone'],
+        },
+      },
+      {
+        name: 'gcp_restart_gce_instance',
+        description: 'Restart a GCE instance',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            instance: {
+              type: 'string',
+              description: 'Instance name',
+            },
+            zone: {
+              type: 'string',
+              description: 'Zone where the instance is located',
+            },
+            projectId: {
+              type: 'string',
+              description: 'Optional GCP project ID',
+            },
+          },
+          required: ['instance', 'zone'],
+        },
+      },
+      {
+        name: 'gcp_get_gce_instance_info',
+        description: 'Get detailed information about a GCE instance',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            instance: {
+              type: 'string',
+              description: 'Instance name',
+            },
+            zone: {
+              type: 'string',
+              description: 'Zone where the instance is located',
+            },
+            projectId: {
+              type: 'string',
+              description: 'Optional GCP project ID',
+            },
+          },
+          required: ['instance', 'zone'],
+        },
+      },
+      {
+        name: 'gcp_modify_gce_instance',
+        description: 'Modify GCE instance properties (machine type, labels, etc.)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            instance: {
+              type: 'string',
+              description: 'Instance name',
+            },
+            zone: {
+              type: 'string',
+              description: 'Zone where the instance is located',
+            },
+            machineType: {
+              type: 'string',
+              description: 'New machine type (optional)',
+            },
+            labels: {
+              type: 'object',
+              description: 'Labels to add/update (optional)',
+            },
+            projectId: {
+              type: 'string',
+              description: 'Optional GCP project ID',
+            },
+          },
+          required: ['instance', 'zone'],
+        },
+      },
     ];
   }
 
@@ -131,6 +270,18 @@ export class GcpTools {
           return await this.handleReadObjectContent(args);
         case 'gcp_get_object_metadata':
           return await this.handleGetObjectMetadata(args);
+        case 'gcp_list_gce_instances':
+          return await this.handleListGceInstances(args);
+        case 'gcp_start_gce_instance':
+          return await this.handleStartGceInstance(args);
+        case 'gcp_stop_gce_instance':
+          return await this.handleStopGceInstance(args);
+        case 'gcp_restart_gce_instance':
+          return await this.handleRestartGceInstance(args);
+        case 'gcp_get_gce_instance_info':
+          return await this.handleGetGceInstanceInfo(args);
+        case 'gcp_modify_gce_instance':
+          return await this.handleModifyGceInstance(args);
         default:
           throw new Error(`Unknown GCP tool: ${name}`);
       }
@@ -183,20 +334,22 @@ export class GcpTools {
     content: Array<{ type: string; text: string }>;
     isError?: boolean;
   }> {
-    if (!this.storage) {
+    const projectId = args.projectId as string | undefined;
+    
+    // Create Storage instance with projectId if provided, otherwise use default
+    const storage = projectId ? new Storage({ projectId }) : (this.storage || new Storage());
+    
+    if (!storage) {
       throw new Error('GCS client not initialized. Ensure Google Cloud credentials are configured.');
     }
 
-    const projectId = args.projectId as string | undefined;
-    const options = projectId ? { projectId } : {};
-
     try {
-      const [buckets] = await this.storage.getBuckets(options);
-      const bucketList = buckets.map((bucket) => ({
+      const [buckets] = await storage.getBuckets();
+      const bucketList = buckets.map((bucket: any) => ({
         name: bucket.name,
-        location: bucket.metadata.location,
-        created: bucket.metadata.timeCreated,
-        updated: bucket.metadata.updated,
+        location: bucket.metadata?.location,
+        created: bucket.metadata?.timeCreated,
+        updated: bucket.metadata?.updated,
       }));
 
       return {
@@ -324,6 +477,247 @@ export class GcpTools {
     } catch (error: any) {
       throw new Error(`Failed to get object metadata: ${error.message}`);
     }
+  }
+
+  private async handleListGceInstances(args: Record<string, unknown>): Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }> {
+    const projectId = args.projectId as string | undefined;
+    const zone = args.zone as string | undefined;
+    const status = args.status as string | undefined;
+
+    let command = 'compute instances list';
+    if (zone) {
+      command += ` --zones=${zone}`;
+    }
+    if (status) {
+      command += ` --filter="status:${status}"`;
+    }
+    command += ' --format=json';
+
+    const result = await this.commandExecutor.executeGcpCommand(command, projectId);
+
+    try {
+      const instances = result.stdout ? JSON.parse(result.stdout) : [];
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(instances, null, 2),
+          },
+        ],
+        isError: result.exitCode !== 0,
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: result.stdout || result.stderr || 'Failed to parse instance list',
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  private async handleStartGceInstance(args: Record<string, unknown>): Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }> {
+    const instance = args.instance as string;
+    const zone = args.zone as string;
+    const projectId = args.projectId as string | undefined;
+
+    if (!instance || !zone) {
+      throw new Error('Instance name and zone are required');
+    }
+
+    const command = `compute instances start ${instance} --zone=${zone}`;
+    const result = await this.commandExecutor.executeGcpCommand(command, projectId);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              stdout: result.stdout,
+              stderr: result.stderr,
+              exitCode: result.exitCode,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+      isError: result.exitCode !== 0,
+    };
+  }
+
+  private async handleStopGceInstance(args: Record<string, unknown>): Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }> {
+    const instance = args.instance as string;
+    const zone = args.zone as string;
+    const projectId = args.projectId as string | undefined;
+
+    if (!instance || !zone) {
+      throw new Error('Instance name and zone are required');
+    }
+
+    const command = `compute instances stop ${instance} --zone=${zone}`;
+    const result = await this.commandExecutor.executeGcpCommand(command, projectId);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              stdout: result.stdout,
+              stderr: result.stderr,
+              exitCode: result.exitCode,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+      isError: result.exitCode !== 0,
+    };
+  }
+
+  private async handleRestartGceInstance(args: Record<string, unknown>): Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }> {
+    const instance = args.instance as string;
+    const zone = args.zone as string;
+    const projectId = args.projectId as string | undefined;
+
+    if (!instance || !zone) {
+      throw new Error('Instance name and zone are required');
+    }
+
+    const command = `compute instances reset ${instance} --zone=${zone}`;
+    const result = await this.commandExecutor.executeGcpCommand(command, projectId);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              stdout: result.stdout,
+              stderr: result.stderr,
+              exitCode: result.exitCode,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+      isError: result.exitCode !== 0,
+    };
+  }
+
+  private async handleGetGceInstanceInfo(args: Record<string, unknown>): Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }> {
+    const instance = args.instance as string;
+    const zone = args.zone as string;
+    const projectId = args.projectId as string | undefined;
+
+    if (!instance || !zone) {
+      throw new Error('Instance name and zone are required');
+    }
+
+    const command = `compute instances describe ${instance} --zone=${zone} --format=json`;
+    const result = await this.commandExecutor.executeGcpCommand(command, projectId);
+
+    try {
+      const instanceInfo = result.stdout ? JSON.parse(result.stdout) : {};
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(instanceInfo, null, 2),
+          },
+        ],
+        isError: result.exitCode !== 0,
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: result.stdout || result.stderr || 'Failed to parse instance info',
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  private async handleModifyGceInstance(args: Record<string, unknown>): Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }> {
+    const instance = args.instance as string;
+    const zone = args.zone as string;
+    const projectId = args.projectId as string | undefined;
+    const machineType = args.machineType as string | undefined;
+    const labels = args.labels as Record<string, string> | undefined;
+
+    if (!instance || !zone) {
+      throw new Error('Instance name and zone are required');
+    }
+
+    let command = `compute instances set-machine-type ${instance} --zone=${zone}`;
+    if (machineType) {
+      command += ` --machine-type=${machineType}`;
+    }
+
+    const results: CommandResult[] = [];
+    
+    // Update machine type if provided
+    if (machineType) {
+      const result = await this.commandExecutor.executeGcpCommand(command, projectId);
+      results.push(result);
+    }
+
+    // Update labels if provided
+    if (labels) {
+      const labelsStr = Object.entries(labels)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(',');
+      const labelCommand = `compute instances add-labels ${instance} --zone=${zone} --labels=${labelsStr}`;
+      const result = await this.commandExecutor.executeGcpCommand(labelCommand, projectId);
+      results.push(result);
+    }
+
+    if (results.length === 0) {
+      throw new Error('Either machineType or labels must be provided');
+    }
+
+    const hasError = results.some((r) => r.exitCode !== 0);
+    const combinedOutput = results
+      .map((r, i) => `Operation ${i + 1}:\n${r.stdout}\n${r.stderr}`)
+      .join('\n\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: combinedOutput,
+        },
+      ],
+      isError: hasError,
+    };
   }
 }
 
